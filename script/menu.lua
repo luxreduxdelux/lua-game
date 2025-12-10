@@ -58,16 +58,18 @@ function menu:new()
 	self.window = window:new()
 	self.layout = LAYOUT_WHICH.LOGO
 	self.close  = false
+	self.delta  = 0.0
 	self.user   = user:new()
+	self.lobby  = nil
 
-	self.system:set_texture("data/level/level.png")
+	self.system:set_texture("level/level.png")
 
 	return self
 end
 
 function menu:draw()
 	---@type texture
-	local texture = self.system:get_texture("data/level/level.png")
+	local texture = self.system:get_texture("level/level.png")
 	local scale   = texture:get_scale()
 	local ratio   = laravox.window.get_render_scale().x / scale.x
 
@@ -82,16 +84,35 @@ end
 local function menu_return(self, target)
 	if self.window:is_return() then
 		self.layout = target
+		return true
 	end
+
+	return false
 end
 
 local function menu_main(self)
 	self.window:draw(function()
-		if self.window:button(self.user:language("PLAY_LOCAL")):is_click() then
-			self.layout = LAYOUT_WHICH.PLAY_LOCAL
+		if self.window:button("Client"):is_click() then
+			self.layout = LAYOUT_WHICH.CLIENT
+			self.socket = laravox.network.new_client()
+			self.lobby  = {
+				name   = "",
+				chat   = "",
+				list   = {},
+				buffer = {}
+			}
 		end
-		if self.window:button(self.user:language("PLAY_WORLD")):is_click() then
-			self.layout = LAYOUT_WHICH.PLAY_WORLD
+		if self.window:button("Server"):is_click() then
+			self.layout = LAYOUT_WHICH.SERVER
+			self.socket = laravox.network.new_server()
+			self.lobby  = {
+				name   = "",
+				chat   = "",
+				list   = {
+					self.user.video.name
+				},
+				buffer = {}
+			}
 		end
 		if self.window:button(self.user:language("CONFIGURATION")):is_click() then
 			self.layout = LAYOUT_WHICH.CONFIGURATION
@@ -101,6 +122,173 @@ local function menu_main(self)
 		end
 		if self.window:button(self.user:language("CLOSE")):is_click() then
 			self.layout = LAYOUT_WHICH.CLOSE
+		end
+		self.window:scroll(vector_2:new(32.0, 128.0), function()
+			for x = 0, 5 do
+				self.window:button(x)
+			end
+		end)
+	end)
+end
+
+local DELTA = 1.0 / 60.0
+
+local function format_message(name, text)
+	return string.format("%s: %s", name, text)
+end
+
+local function menu_client(self)
+	local frame = laravox.window.get_frame_time()
+
+	self.delta = self.delta + frame
+
+	while self.delta >= DELTA do
+		local message_list = self.socket:update(DELTA)
+
+		for _, packet in ipairs(message_list) do
+			print(packet, true)
+
+			if packet.type == "server_chat" then
+				table.insert(self.lobby.buffer, format_message(packet.name, packet.text))
+			elseif packet.type == "server_connect" then
+				self.lobby.name = packet.name
+				self.lobby.list = packet.list
+				table.insert(self.lobby.list, self.user.video.name)
+
+				self.socket:set({
+					type = "client_connect",
+					name = self.user.video.name,
+				})
+			elseif packet.type == "server_new_connection" then
+				table.insert(self.lobby.list, packet.name)
+				table.insert(self.lobby.buffer, string.format("%s has joined the lobby.", packet.name))
+			end
+		end
+
+		self.delta = self.delta - DELTA
+	end
+
+	self.window:draw(function()
+		if self.socket:get_connect() then
+			menu_return(self, LAYOUT_WHICH.MAIN)
+
+			self.window:text("Connecting to server...")
+		else
+			if menu_return(self, LAYOUT_WHICH.MAIN) then
+				print(self.socket)
+				self.socket:disconnect()
+				self.socket = nil
+			end
+
+			self.window:text("Client Menu")
+			self.window:text(self.lobby.name)
+			self.lobby.chat = self.window:record("Lobby Chat", self.lobby.chat)
+
+			if self.window:button("Send"):is_click() then
+				if not (self.lobby.chat == "") then
+					self.socket:set({
+						type = "client_chat",
+						name = self.user.video.name,
+						text = self.lobby.chat
+					})
+					table.insert(self.lobby.buffer, format_message(self.user.video.name, self.lobby.chat))
+					self.lobby.chat = ""
+				end
+			end
+
+			for _, entry in ipairs(self.lobby.buffer) do
+				self.window:text(entry)
+			end
+
+			self.window:set_point(vector_2:new(512.0, 8.0))
+
+			self.window:text("Player List")
+
+			for _, entry in pairs(self.lobby.list) do
+				self.window:text(entry)
+			end
+		end
+	end)
+end
+
+local function menu_server(self)
+	local frame = laravox.window.get_frame_time()
+
+	self.delta = self.delta + frame
+
+	while self.delta >= DELTA do
+		local message_list, enter_list, leave_list = self.socket:update(DELTA)
+
+		for _, message in ipairs(message_list) do
+			local client = message[1]
+			local packet = message[2]
+
+			print(message, true)
+
+			if packet.type == "client_chat" then
+				self.socket:set_except_client({
+					type = "server_chat",
+					name = packet.name,
+					text = packet.text
+				}, client)
+				table.insert(self.lobby.buffer, format_message(packet.name, packet.text))
+			elseif packet.type == "client_connect" then
+				self.socket:set_except_client({
+					type = "server_new_connection",
+					name = packet.name
+				}, client)
+				self.lobby.list[client] = packet.name
+				table.insert(self.lobby.buffer, string.format("%s has joined the lobby.", packet.name))
+			end
+		end
+
+		for _, identifier in ipairs(enter_list) do
+			self.socket:set_client({
+				type = "server_connect",
+				name = self.lobby.name,
+				list = self.lobby.list,
+			}, identifier)
+		end
+
+		for _, identifier in ipairs(leave_list) do
+			print("Client disconnect.")
+		end
+
+		self.delta = self.delta - DELTA
+	end
+
+	self.window:draw(function()
+		if menu_return(self, LAYOUT_WHICH.MAIN) then
+			self.socket:disconnect()
+			self.socket = nil
+		end
+
+		self.window:text("Server Menu")
+		self.lobby.name = self.window:record("Lobby Name", self.lobby.name)
+		self.lobby.chat = self.window:record("Lobby Chat", self.lobby.chat)
+
+		if self.window:button("Send"):is_click() then
+			if not (self.lobby.chat == "") then
+				self.socket:set({
+					type = "server_chat",
+					name = self.user.video.name,
+					text = self.lobby.chat
+				})
+				table.insert(self.lobby.buffer, format_message(self.user.video.name, self.lobby.chat))
+				self.lobby.chat = ""
+			end
+		end
+
+		for _, entry in ipairs(self.lobby.buffer) do
+			self.window:text(entry)
+		end
+
+		self.window:set_point(vector_2:new(512.0, 8.0))
+
+		self.window:text("Player List")
+
+		for _, entry in pairs(self.lobby.list) do
+			self.window:text(entry)
 		end
 	end)
 end
@@ -171,13 +359,11 @@ local function menu_close(self)
 end
 
 LAYOUT_WHICH = {
-	LOGO               = menu_main,
-	MAIN               = menu_main,
-	PLAY_LOCAL         = menu_main,
-	PLAY_WORLD         = menu_main,
-	PLAY_WORLD_CONNECT = menu_main,
-	PLAY_WORLD_LOBBY   = menu_main,
-	CONFIGURATION      = menu_configuration,
-	ABOUT              = menu_about,
-	CLOSE              = menu_close,
+	LOGO          = menu_main,
+	MAIN          = menu_main,
+	CLIENT        = menu_client,
+	SERVER        = menu_server,
+	CONFIGURATION = menu_configuration,
+	ABOUT         = menu_about,
+	CLOSE         = menu_close,
 }

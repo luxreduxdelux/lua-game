@@ -358,10 +358,34 @@ function box_2:new(p_x, p_y, s_x, s_y)
 	return self
 end
 
+function box_2:zero()
+	return box_2:new(0.0, 0.0, 0.0, 0.0)
+end
+
+function box_2:set(p_x, p_y, s_x, s_y)
+	if type(p_x) == "table" then
+		self.p_x = p_x.p_x
+		self.p_y = p_x.p_y
+		self.s_x = p_x.s_x
+		self.s_y = p_x.s_y
+	else
+		self.p_x = p_x
+		self.p_y = p_y
+		self.s_x = s_x
+		self.s_y = s_y
+	end
+end
+
 function box_2:intersect_point(point)
 	return
 		(point.x >= self.p_x and point.x <= self.p_x + self.s_x) and
 		(point.y >= self.p_y and point.y <= self.p_y + self.s_y)
+end
+
+function box_2:intersect_box(box)
+	return
+		(self.p_x < (box.p_x + box.s_x) and (self.p_x + self.s_x) > box.p_x) and
+		(self.p_y < (box.p_y + box.s_y) and (self.p_y + self.s_y) > box.p_y)
 end
 
 --[[----------------------------------------------------------------]]

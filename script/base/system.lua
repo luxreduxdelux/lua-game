@@ -52,30 +52,38 @@ system = {}
 system.__index = system
 
 function system:new()
-	local self = setmetatable({ __meta = "system" }, system)
+	local self      = setmetatable({ __meta = "system" }, system)
 
-	self.texture = {}
-	self.font = {}
-	self.sound = {}
-	self.music = {}
+	self.texture    = {}
+	self.font       = {}
+	self.sound      = {}
+	self.music      = {}
+	self.path       = {}
+
+	local file_list = laravox.data.get_file_list("data", true)
+
+	for _, entry in ipairs(file_list) do
+		local path = string.sub(entry, #"data" + 2)
+		self.path[path] = entry
+	end
 
 	return self
 end
 
 local function system_get(asset, path)
-	local system = system[path]
+	local asset = asset[path]
 
-	if not system then
+	if not asset then
 		error(string.format("Could not find asset \"%s\".", path))
 	end
 
-	return system
+	return asset
 end
 
-local function system_set(asset, call, path, ...)
-	system[path] = call(path, ...)
+local function system_set(system, asset, call, path, ...)
+	asset[path] = call(system.path[path], ...)
 
-	return system[path]
+	return asset[path]
 end
 
 ---@return texture texture
@@ -84,7 +92,7 @@ function system:get_texture(path)
 end
 
 function system:set_texture(path)
-	return system_set(self.texture, laravox.texture.new, path)
+	return system_set(self, self.texture, laravox.texture.new, path)
 end
 
 function system:get_font(path)
@@ -92,7 +100,7 @@ function system:get_font(path)
 end
 
 function system:set_font(path)
-	return system_set(self.font, laravox.font.new, path)
+	return system_set(self, self.font, laravox.font.new, path)
 end
 
 function system:get_sound(path)
@@ -100,7 +108,7 @@ function system:get_sound(path)
 end
 
 function system:set_sound(path)
-	return system_set(self.sound, laravox.sound.new, path)
+	return system_set(self, self.sound, laravox.sound.new, path)
 end
 
 function system:get_music(path)
@@ -108,5 +116,5 @@ function system:get_music(path)
 end
 
 function system:set_music(path)
-	return system_set(self.music, laravox.music.new, path)
+	return system_set(self, self.music, laravox.music.new, path)
 end
