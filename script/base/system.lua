@@ -52,7 +52,7 @@ system = {}
 system.__index = system
 
 function system:new()
-	local self      = setmetatable({ __meta = "system" }, system)
+	local self      = table.meta_new(system, "system")
 
 	self.texture    = {}
 	self.font       = {}
@@ -81,7 +81,9 @@ local function system_get(asset, path)
 end
 
 local function system_set(system, asset, call, path, ...)
-	asset[path] = call(system.path[path], ...)
+	if not asset[path] then
+		asset[path] = call(system.path[path], ...)
+	end
 
 	return asset[path]
 end
@@ -99,8 +101,8 @@ function system:get_font(path)
 	return system_get(self.font, path)
 end
 
-function system:set_font(path)
-	return system_set(self, self.font, laravox.font.new, path)
+function system:set_font(path, scale)
+	return system_set(self, self.font, laravox.font.new, path, scale)
 end
 
 function system:get_sound(path)

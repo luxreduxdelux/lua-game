@@ -92,7 +92,7 @@ window = {}
 window.__index = window
 
 function window:new()
-	local self = setmetatable({ __meta = "window" }, window)
+	local self = table.meta_new(window, "window")
 
 	self.system = system:new()
 	self.point = vector_2:zero()
@@ -105,7 +105,7 @@ function window:new()
 	self.input = { which = INPUT_DEVICE.BOARD, index = 0 }
 	self.cache = {}
 
-	self.system:set_font("video/font.ttf")
+	self.system:set_font("video/font.ttf", FONT_SCALE)
 	self.system:set_texture("video/window/board-mouse.png")
 	self.system:set_texture("video/window/pad-0.png")
 	self.system:set_sound("audio/click-a.ogg")
@@ -275,7 +275,8 @@ function window:scroll(scale, call)
 
 		laravox.screen.draw_scissor(call, self.area)
 
-		if self.hover then
+		if not (self.input.which == INPUT_DEVICE.MOUSE) and self.hover then
+			-- TO-DO Automatically scroll on partial intersection as well.
 			if not self.hover:intersect_box(self.area) then
 				local scroll = point + cache.scroll + scale.y - self.hover.p_y - self.hover.s_y
 
@@ -295,7 +296,7 @@ function window:scroll(scale, call)
 	--[[]]
 
 	self.point.y = point + scale.y
-	self.area = nil
+	self.area    = nil
 
 	return cache
 end
@@ -497,7 +498,7 @@ function window:switch(label, value, choice)
 				value = value + 1
 			end
 
-			value = math.fmod(value, #choice + 1)
+			value = value % (#choice + 1)
 		else
 			if cache:is_side_a() then
 				value = value - 1
@@ -609,7 +610,7 @@ cache = {}
 cache.__index = cache
 
 function cache:new()
-	local self       = setmetatable({ __meta = "cache" }, cache)
+	local self       = table.meta_new(cache, "cache")
 
 	self.alpha       = 0.0
 	self.scroll      = 0.0

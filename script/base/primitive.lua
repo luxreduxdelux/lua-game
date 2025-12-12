@@ -48,6 +48,8 @@
 -- OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 --]]
 
+require("bit")
+
 INPUT_DEVICE = {
 	BOARD = 0,
 	MOUSE = 1,
@@ -204,7 +206,7 @@ vector_2 = {}
 vector_2.__index = vector_2
 
 function vector_2:new(x, y)
-	local self = setmetatable({ __meta = "vector_2" }, vector_2)
+	local self = table.meta_new(vector_2, "vector_2")
 
 	self:set(x, y)
 
@@ -245,13 +247,18 @@ function vector_2:scalar(scalar)
 	return vector_2:new(scalar, scalar)
 end
 
-function vector_2:length(square)
-	local sum = self.x * self.x + self.y * self.y
+function vector_2:length()
+	return math.sqrt(self.x * self.x + self.y * self.y)
+end
 
-	if square then
-		return math.sqrt(sum)
+function vector_2:normal()
+	local length = self:length()
+
+	if not (length == 0) then
+		length = 1.0 / length
+		return vector_2:new(self.x * length, self.y * length)
 	else
-		return sum
+		return vector_2:zero()
 	end
 end
 
@@ -275,13 +282,17 @@ function vector_2:__unm(other)
 	return vector_2:new(-other.x, -other.y)
 end
 
+function vector_2:__eq(other)
+	return self.x == other.x and self.y == other.y
+end
+
 --[[----------------------------------------------------------------]]
 
 ray = {}
 ray.__index = ray
 
 function ray:new(point, where)
-	local self = setmetatable({ __meta = "ray" }, ray)
+	local self = table.meta_new(ray, "ray")
 
 	self.point = point
 	self.where = where
@@ -295,7 +306,7 @@ color = {}
 color.__index = color
 
 function color:new(r, g, b, a)
-	local self = setmetatable({ __meta = "color" }, color)
+	local self = table.meta_new(color, "color")
 
 	self.r = r
 	self.g = g
@@ -348,7 +359,7 @@ box_2 = {}
 box_2.__index = box_2
 
 function box_2:new(p_x, p_y, s_x, s_y)
-	local self = setmetatable({ __meta = "box_2" }, box_2)
+	local self = table.meta_new(box_2, "box_2")
 
 	self.p_x   = p_x
 	self.p_y   = p_y
@@ -390,6 +401,22 @@ end
 
 --[[----------------------------------------------------------------]]
 
+camera_2D = {}
+camera_2D.__index = camera_2D
+
+function camera_2D:new(point, shift, angle, zoom)
+	local self = table.meta_new(camera_2D, "camera_2D")
+
+	self.point = point
+	self.shift = shift
+	self.angle = angle
+	self.zoom  = zoom
+
+	return self
+end
+
+--[[----------------------------------------------------------------]]
+
 function table.in_set(value, object)
 	for _, entry in pairs(value) do
 		if entry == object then
@@ -400,7 +427,20 @@ function table.in_set(value, object)
 	return false
 end
 
-function table.apply_meta(value, process)
+function table.meta_new(meta, name)
+	local result = {}
+	setmetatable(result, meta)
+	result.__meta = name
+
+	return result
+end
+
+function table.meta_save(value, meta, name)
+	setmetatable(value, meta)
+	value.__meta = name
+end
+
+function table.meta_load(value, process)
 	if not process then
 		process = {}
 	end
@@ -424,7 +464,7 @@ function table.apply_meta(value, process)
 
 		for key, entry in pairs(value) do
 			if type(entry) == "table" then
-				table.apply_meta(entry, process)
+				table.meta_load(entry, process)
 			end
 		end
 	end
@@ -464,4 +504,24 @@ end
 
 function math.value_from_percentage(value, min, max)
 	return value * (max - min) + min
+end
+
+function math.ease_in_out_quad(value)
+	return value < 0.5 and 2.0 * value * value or 1.0 - (-2 * value + 2.0) ^ 2.0 / 2.0
+end
+
+function math.degree_to_radian(value)
+	return (value * math.pi) / 180.0
+end
+
+function math.radian_to_degree(value)
+	return (value * 180.0) / math.pi
+end
+
+--[[----------------------------------------------------------------]]
+
+function bit.get_at(value, at)
+	local mask = bit.lshift(1, at)
+
+	return not (bit.band(value, mask) == 0)
 end

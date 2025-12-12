@@ -52,33 +52,71 @@ menu = {}
 menu.__index = menu
 
 function menu:new()
-	local self  = setmetatable({ __meta = "menu" }, menu)
+	local self  = table.meta_new(menu, "menu")
 
 	self.system = system:new()
 	self.window = window:new()
 	self.layout = LAYOUT_WHICH.LOGO
 	self.close  = false
 	self.delta  = 0.0
-	self.user   = user:new()
+	self.scene  = scene:new("data/level/level")
 	self.lobby  = nil
+	self.time   = 0.0
+	self.user   = user:new()
 
-	self.system:set_texture("level/level.png")
+	self.system:set_texture("video/logo.png")
+	self.system:set_font("video/logo.ttf", 64)
+
+	--self.scene.system:set_sound("audio/logo.ogg")
+	--self.scene:play_sound("audio/logo.ogg")
 
 	return self
 end
 
-function menu:draw()
-	---@type texture
-	local texture = self.system:get_texture("level/level.png")
-	local scale   = texture:get_scale()
-	local ratio   = laravox.window.get_render_scale().x / scale.x
+function menu:draw(game)
+	local toggle = laravox.input.board.get_press(INPUT_ACTION.BOARD.ESCAPE)
 
-	texture:draw(
-		box_2:new(0.0, 0.0, scale.x, scale.y),
-		box_2:new(0.0, 32.0, scale.x * ratio, scale.y * ratio), vector_2:zero(), 0.0, color:scalar(66, 255)
-	)
+	self.time = self.time + laravox.window.get_frame_time()
 
-	self.layout(self)
+	if game.world and self.window:is_return() then
+		if self.layout == LAYOUT_WHICH.MAIN then
+			self.layout = nil
+		else
+			self.layout = LAYOUT_WHICH.MAIN
+		end
+	end
+
+	if self.layout then
+		if not (self.layout == LAYOUT_WHICH.LOGO) then
+			local scale = laravox.window.get_render_scale()
+
+			if not game.world then
+				self.scene:draw()
+			end
+
+			laravox.screen.draw_box_2(box_2:new(0.0, 0.0, scale.x, scale.y), vector_2:zero(), 0.0, color:scalar(0, 160))
+		end
+
+		self:layout(game)
+	end
+end
+
+local function fade(time, fade_a, fade_b)
+	if time >= fade_b + fade_a then
+		return 0.0
+	elseif time >= fade_b then
+		local c = math.percentage_from_value(time, fade_b, fade_b + fade_a);
+		local s = math.pi * 0.5 + (math.pi * 0.5) * c;
+
+		return math.sin(s)
+	elseif time >= fade_a then
+		return 1.0
+	else
+		local c = math.percentage_from_value(time, 0.0, fade_a);
+		local s = math.pi * 0.5 * c;
+
+		return math.sin(s)
+	end
 end
 
 local function menu_return(self, target)
@@ -90,29 +128,55 @@ local function menu_return(self, target)
 	return false
 end
 
-local function menu_main(self)
+local function menu_logo(self)
+	local image     = self.system:get_texture("video/logo.png")
+	local label     = self.system:get_font("video/logo.ttf")
+	local scale     = vector_2:copy(laravox.window.get_render_scale()) * 0.5
+	local frame_t_a = (self.time * 5.0) % 10.0
+	local frame_p_a = vector_2:new(
+		math.floor(frame_t_a % 4.0),
+		math.floor(frame_t_a / 4.0)
+	)
+	--local frame_t_b = (self.time + 1.0) % 10.0
+	--local frame_p_b = vector_2:new(
+	--	math.floor(frame_t_b % 4.0),
+	--	math.floor(frame_t_b / 4.0)
+	--)
+	--local alpha     = math.ease_in_out_quad(frame_t_b - math.modf(frame_t_b))
+	local black     = fade(math.max(self.time - 1.0, 0.0), 2.0, 8.0)
+
+	image:draw(
+		box_2:new(frame_p_a.x * 256.0, frame_p_a.y * 256.0, 256.0, 256.0),
+		box_2:new(scale.x - 128.0, scale.y - 224.0, 256.0, 256.0), vector_2:zero(), 0.0,
+		color:white()
+	)
+
+	--[[
+	image:draw(
+		box_2:new(frame_p_b.x * 256.0, frame_p_b.y * 256.0, 256.0, 256.0),
+		box_2:new(scale.x - 128.0, scale.y - 224.0, 256.0, 256.0), vector_2:zero(), 0.0,
+		color:white():alpha(alpha)
+	)
+	--]]
+
+	local measure = vector_2:copy(label:measure("land\nmine\ncat.", 64.0, 8.0)) * 0.5
+
+	label:draw("land\nmine\ncat.", scale - measure + vector_2:new(-8.0, 72.0), 64.0, 8.0, color:white())
+
+	laravox.screen.draw_box_2(box_2:new(0.0, 0.0, scale.x * 2.0, scale.y * 2.0), vector_2:zero(), 0.0,
+		color:black():alpha(1.0 - black))
+
+	if self.time >= 0.5 and laravox.input.board.get_last_press() or laravox.input.mouse.get_last_press() or laravox.input.pad.get_last_press() or self.time >= 12.0 then
+		self.scene:clear()
+		self.layout = LAYOUT_WHICH.MAIN
+	end
+end
+
+local function menu_main(self, game)
 	self.window:draw(function()
-		if self.window:button("Client"):is_click() then
-			self.layout = LAYOUT_WHICH.CLIENT
-			self.socket = laravox.network.new_client()
-			self.lobby  = {
-				name   = "",
-				chat   = "",
-				list   = {},
-				buffer = {}
-			}
-		end
-		if self.window:button("Server"):is_click() then
-			self.layout = LAYOUT_WHICH.SERVER
-			self.socket = laravox.network.new_server()
-			self.lobby  = {
-				name   = "",
-				chat   = "",
-				list   = {
-					self.user.video.name
-				},
-				buffer = {}
-			}
+		if self.window:button("Play"):is_click() then
+			self.layout = nil
+			game.world  = world:new()
 		end
 		if self.window:button(self.user:language("CONFIGURATION")):is_click() then
 			self.layout = LAYOUT_WHICH.CONFIGURATION
@@ -122,173 +186,6 @@ local function menu_main(self)
 		end
 		if self.window:button(self.user:language("CLOSE")):is_click() then
 			self.layout = LAYOUT_WHICH.CLOSE
-		end
-		self.window:scroll(vector_2:new(32.0, 128.0), function()
-			for x = 0, 5 do
-				self.window:button(x)
-			end
-		end)
-	end)
-end
-
-local DELTA = 1.0 / 60.0
-
-local function format_message(name, text)
-	return string.format("%s: %s", name, text)
-end
-
-local function menu_client(self)
-	local frame = laravox.window.get_frame_time()
-
-	self.delta = self.delta + frame
-
-	while self.delta >= DELTA do
-		local message_list = self.socket:update(DELTA)
-
-		for _, packet in ipairs(message_list) do
-			print(packet, true)
-
-			if packet.type == "server_chat" then
-				table.insert(self.lobby.buffer, format_message(packet.name, packet.text))
-			elseif packet.type == "server_connect" then
-				self.lobby.name = packet.name
-				self.lobby.list = packet.list
-				table.insert(self.lobby.list, self.user.video.name)
-
-				self.socket:set({
-					type = "client_connect",
-					name = self.user.video.name,
-				})
-			elseif packet.type == "server_new_connection" then
-				table.insert(self.lobby.list, packet.name)
-				table.insert(self.lobby.buffer, string.format("%s has joined the lobby.", packet.name))
-			end
-		end
-
-		self.delta = self.delta - DELTA
-	end
-
-	self.window:draw(function()
-		if self.socket:get_connect() then
-			menu_return(self, LAYOUT_WHICH.MAIN)
-
-			self.window:text("Connecting to server...")
-		else
-			if menu_return(self, LAYOUT_WHICH.MAIN) then
-				print(self.socket)
-				self.socket:disconnect()
-				self.socket = nil
-			end
-
-			self.window:text("Client Menu")
-			self.window:text(self.lobby.name)
-			self.lobby.chat = self.window:record("Lobby Chat", self.lobby.chat)
-
-			if self.window:button("Send"):is_click() then
-				if not (self.lobby.chat == "") then
-					self.socket:set({
-						type = "client_chat",
-						name = self.user.video.name,
-						text = self.lobby.chat
-					})
-					table.insert(self.lobby.buffer, format_message(self.user.video.name, self.lobby.chat))
-					self.lobby.chat = ""
-				end
-			end
-
-			for _, entry in ipairs(self.lobby.buffer) do
-				self.window:text(entry)
-			end
-
-			self.window:set_point(vector_2:new(512.0, 8.0))
-
-			self.window:text("Player List")
-
-			for _, entry in pairs(self.lobby.list) do
-				self.window:text(entry)
-			end
-		end
-	end)
-end
-
-local function menu_server(self)
-	local frame = laravox.window.get_frame_time()
-
-	self.delta = self.delta + frame
-
-	while self.delta >= DELTA do
-		local message_list, enter_list, leave_list = self.socket:update(DELTA)
-
-		for _, message in ipairs(message_list) do
-			local client = message[1]
-			local packet = message[2]
-
-			print(message, true)
-
-			if packet.type == "client_chat" then
-				self.socket:set_except_client({
-					type = "server_chat",
-					name = packet.name,
-					text = packet.text
-				}, client)
-				table.insert(self.lobby.buffer, format_message(packet.name, packet.text))
-			elseif packet.type == "client_connect" then
-				self.socket:set_except_client({
-					type = "server_new_connection",
-					name = packet.name
-				}, client)
-				self.lobby.list[client] = packet.name
-				table.insert(self.lobby.buffer, string.format("%s has joined the lobby.", packet.name))
-			end
-		end
-
-		for _, identifier in ipairs(enter_list) do
-			self.socket:set_client({
-				type = "server_connect",
-				name = self.lobby.name,
-				list = self.lobby.list,
-			}, identifier)
-		end
-
-		for _, identifier in ipairs(leave_list) do
-			print("Client disconnect.")
-		end
-
-		self.delta = self.delta - DELTA
-	end
-
-	self.window:draw(function()
-		if menu_return(self, LAYOUT_WHICH.MAIN) then
-			self.socket:disconnect()
-			self.socket = nil
-		end
-
-		self.window:text("Server Menu")
-		self.lobby.name = self.window:record("Lobby Name", self.lobby.name)
-		self.lobby.chat = self.window:record("Lobby Chat", self.lobby.chat)
-
-		if self.window:button("Send"):is_click() then
-			if not (self.lobby.chat == "") then
-				self.socket:set({
-					type = "server_chat",
-					name = self.user.video.name,
-					text = self.lobby.chat
-				})
-				table.insert(self.lobby.buffer, format_message(self.user.video.name, self.lobby.chat))
-				self.lobby.chat = ""
-			end
-		end
-
-		for _, entry in ipairs(self.lobby.buffer) do
-			self.window:text(entry)
-		end
-
-		self.window:set_point(vector_2:new(512.0, 8.0))
-
-		self.window:text("Player List")
-
-		for _, entry in pairs(self.lobby.list) do
-			self.window:text(entry)
 		end
 	end)
 end
@@ -315,10 +212,10 @@ local function menu_configuration(self)
 		self.user.video.language = self.window:switch(self.user:language("LANGUAGE"),
 			self.user.video.language, LANGUAGE.CHOICE_TABLE)
 		self.user.video.rate, cache = self.window:slider(self.user:language("FRAME_RATE"),
-			self.user.video.rate, 30.0, 300.0, 1.0)
+			self.user.video.rate, 10.0, 300.0, 1.0)
 
 		if cache:is_change() then
-			print("rate change")
+			laravox.window.set_frame_rate(self.user.video.rate)
 		end
 
 		self.user.video.shake = self.window:slider(self.user:language("SCREEN_SHAKE"),
@@ -359,10 +256,8 @@ local function menu_close(self)
 end
 
 LAYOUT_WHICH = {
-	LOGO          = menu_main,
+	LOGO          = menu_logo,
 	MAIN          = menu_main,
-	CLIENT        = menu_client,
-	SERVER        = menu_server,
 	CONFIGURATION = menu_configuration,
 	ABOUT         = menu_about,
 	CLOSE         = menu_close,

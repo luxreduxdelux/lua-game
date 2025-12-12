@@ -50,6 +50,8 @@
 
 require("data/script/base/main")
 require("data/script/constant")
+require("data/script/scene")
+require("data/script/world")
 require("data/script/user")
 require("data/script/menu")
 
@@ -70,16 +72,22 @@ function game:info()
 end
 
 function game:main()
-	laravox.window.set_frame_rate(60.0)
+	laravox.window.set_frame_rate(144.0)
 	laravox.window.set_exit_key()
 
 	self.menu = menu:new()
+	--self.menu.layout = nil
+	--self.world       = world:new()
 
 	while not laravox.window.get_exit() and not self.menu.close do
 		laravox.screen.draw(function()
 			laravox.screen.wipe(color:black())
 
-			self.menu:draw()
+			if self.world then
+				self.world:draw(self)
+			end
+
+			self.menu:draw(self)
 		end)
 
 		if laravox.input.board.get_press(INPUT_ACTION.BOARD.F1) then
@@ -94,7 +102,7 @@ function game:main()
 end
 
 function game:fail(message)
-	local font = laravox.font.new("data/video/font.ttf")
+	local font = laravox.font.new("data/video/font.ttf", 32)
 
 	while not laravox.window.get_exit() do
 		laravox.screen.draw(function()

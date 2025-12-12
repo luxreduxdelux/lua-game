@@ -52,7 +52,7 @@ action = {}
 action.__index = action
 
 function action:new(board, mouse, pad)
-	local self = setmetatable({ __meta = "action" }, action)
+	local self = table.meta_new(action, "action")
 
 	self.board = board
 	self.mouse = mouse

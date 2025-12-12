@@ -58,9 +58,9 @@ function user:new()
 
 	if laravox.data.get_file_exist(FILE_PATH) then
 		self = laravox.data.deserialize(laravox.data.get_file(FILE_PATH))
-		table.apply_meta(self)
+		table.meta_load(self)
 	else
-		self = setmetatable({ __meta = "user" }, user)
+		self = table.meta_new(user, "user")
 		self.video = {
 			name     = "Player",
 			sync     = false,
